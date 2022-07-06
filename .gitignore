@@ -1,0 +1,13 @@
+.build
+.mbed
+projectfiles
+*.py*
+mbed-os
+BUILD
+
+compile_commands.json
+.clangd
+.cache
+mbed-mqtt
+mbed_app.json
+main.cpp.*
