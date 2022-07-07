@@ -246,26 +246,19 @@ enum Zustand{STOP, FaHR_VOR, FAHR_ZURUEK, DREHE_RECHTS, DREHE_LINKS};
 volatile Zustand aktueller_zustand = STOP;
 std::string aktueller_befehl = "0";
 
-// ALLE LEDS AN MF-SHIELD
-bool leds_aktiv = false;
-#define LED_REFRESH_TIME 200ms
-DigitalOut leds[] = {PA_5, PA_6, PA_7, PB_6};
-const int LED_AN = 0;
-const int LED_AUS = 1;
-
 #include "LCD.h"
 lcd tm_lcd;
 bool lcd_aktiv = true;
 
 // Motoren
-PortOut motor1(PortC,0b1111); // C 0-3
-int motor1_verschiebung = 0;
-PortOut motor2(PortC,0b111100000000); // C 8-11
-int motor2_verschiebung = 8;
+PortOut motor_teebeutel(PortC,0b1111); // C 0-3
+int motor_teebeutel_verschiebung = 0;
+PortOut motor_stand(PortC,0b111100000000); // C 8-11
+int motor_stand_verschiebung = 8;
 bool ist_motor1_aktiv = true;
 int motorlauf[]={0b0001,0b0011,0b0010,0b0110,0b0100,0b1100,0b1000,0b1001};
-unsigned int position_motor1 = 0;
-unsigned int position_motor2 = 0;
+unsigned int position_motor_teebeutel = 0;
+unsigned int position_motor_stand = 0;
 Ticker motor_steurung_ticker;
 //Ticker motor2_ticker;
 #define MOTOR_SPEED 1ms
@@ -279,21 +272,14 @@ int teebeutel_jiggle = 1500;
 
 // Methoden
 void show_on_lcd(const char* msg);
-void einschalte_led(int which_led);
 void do_set_zustand(Zustand zustand);
-
-void fahr_teebeautel_unten();
-void fahr_teebeautel_home();
-void jiggle_teebeautel();
+void tee_maschin_controller();
+void fahr_teebeutel_unten();
+void fahr_teebeutel_home();
+void shake_teebeutel();
 void fahr_stand_zu_wegwerf_pos();
 void fahr_stand_home();
-
-void do_stop();
-void do_fahr_vor();
-void do_fahr_zuruek();
-void do_drehe_rechts();
-void do_drehe_links();
-void do_motor_steurung();
+void mache_tee();
 
 
 int main() {
@@ -306,7 +292,7 @@ int main() {
     mqtt_thread.start(check_mqtt_message); // MQTT Verbindung in eigner Thread
     LOG(MessageType::INFO, "Init Erfolgreich");
     show_on_lcd("Init Erfolgreich");
-    motor_steurung_ticker.attach(&do_motor_steurung, MOTOR_SPEED);
+    motor_steurung_ticker.attach(&tee_maschin_controller, MOTOR_SPEED);
   
   } else { // init war nicht erfolgreicht
 
@@ -320,7 +306,7 @@ int main() {
 
   while(true) {
 
-      LOG(MessageType::DEBUG, "%d, %d", position_motor1, position_motor2);
+      LOG(MessageType::DEBUG, "%d, %d", position_motor_teebeutel, position_motor_stand);
       ThisThread::sleep_for(100ms);
 
   }
@@ -347,14 +333,14 @@ bool ist_befehl(string befehl) {
 
       LOG(MessageType::INFO, "Teebeutel geht unten");
       show_on_lcd("Teebeutel unten");
-      fahr_teebeautel_unten();
+      fahr_teebeutel_unten();
       return true;
 
   } else if(befehl == "1"){
       
       LOG(MessageType::INFO, "Teebeutel geht home");
       show_on_lcd("Teebeutel home");
-      fahr_teebeautel_home();
+      fahr_teebeutel_home();
       return true;
 
   } else if(befehl == "2"){
@@ -375,7 +361,7 @@ bool ist_befehl(string befehl) {
       
       LOG(MessageType::INFO, "shake it baby...");
       show_on_lcd("Jiggle ..");
-      jiggle_teebeautel();
+      shake_teebeutel();
       return true;
 
   } else if(befehl == "5"){
@@ -383,7 +369,7 @@ bool ist_befehl(string befehl) {
       LOG(MessageType::INFO, "Alles home");
       show_on_lcd("All Home");
       fahr_stand_home();
-      fahr_teebeautel_home();
+      fahr_teebeutel_home();
       return true;
 
   } else if(befehl == "6"){
@@ -417,89 +403,62 @@ void show_on_lcd(const char* msg) {
     }
 }
 
-void einschalte_led(int which_led) {
-    if(!leds_aktiv){return;};
-
-    if(which_led <= 4 && which_led >= 0) {
-        for(int i = 0; i < 4; i++ ){
-            leds[i]  = LED_AUS;
-        }
-        if(which_led >= 1){
-            leds[which_led - 1] = LED_AN;
-        }
-    }
+void tee_maschin_controller() {
+    // noch nichts
 }
 
-void do_set_zustand(Zustand zustand) {
-    aktueller_zustand = zustand;
-    einschalte_led(zustand);
-}
-
-void do_stop() {/* nichts zu tun */ }
-
-void do_fahr_vor() {    position_motor1++;}
-
-void do_fahr_zuruek() {    position_motor1--;}
-
-void do_drehe_rechts() {    position_motor2++;}
-
-void do_drehe_links() {    position_motor2--;}
-
-void do_motor_steurung() {
-    motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
-    motor2 = motorlauf[position_motor2%8]<<motor2_verschiebung;
-
-    switch(aktueller_zustand) {
-        case STOP: do_stop(); break;
-        case FaHR_VOR: do_fahr_vor(); break;
-        case FAHR_ZURUEK: do_fahr_zuruek(); break;
-        case DREHE_RECHTS: do_drehe_rechts(); break;
-        case DREHE_LINKS: do_drehe_links(); break;
-    }
-}
-
-void fahr_teebeautel_unten() {
-    while(position_motor1 < teebeutel_unten) {
-        position_motor1++;
+void fahr_teebeutel_unten() {
+    while(position_motor_teebeutel < teebeutel_unten) {
+        position_motor_teebeutel++;
         ThisThread::sleep_for(MOTOR_SPEED);
-        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+        motor_teebeutel = motorlauf[position_motor_teebeutel%8]<<motor_teebeutel_verschiebung;
     }
 }
 
-void fahr_teebeautel_home() {
-    while(position_motor1 > teebeutel_home) {
-        position_motor1--;
+void fahr_teebeutel_home() {
+    while(position_motor_teebeutel > teebeutel_home) {
+        position_motor_teebeutel--;
         ThisThread::sleep_for(MOTOR_SPEED);
-        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+        motor_teebeutel = motorlauf[position_motor_teebeutel%8]<<motor_teebeutel_verschiebung;
     }
 }
 
-void jiggle_teebeautel() {
-    while(position_motor1 > teebeutel_jiggle) {
-        position_motor1--;
+void shake_teebeutel() {
+    while(position_motor_teebeutel > teebeutel_jiggle) {
+        position_motor_teebeutel--;
         ThisThread::sleep_for(MOTOR_SPEED);
-        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+        motor_teebeutel = motorlauf[position_motor_teebeutel%8]<<motor_teebeutel_verschiebung;
     }
 
-    while(position_motor1 < teebeutel_unten) {
-        position_motor1++;
+    while(position_motor_teebeutel < teebeutel_unten) {
+        position_motor_teebeutel++;
         ThisThread::sleep_for(MOTOR_SPEED);
-        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+        motor_teebeutel = motorlauf[position_motor_teebeutel%8]<<motor_teebeutel_verschiebung;
     }
 }
 
 void fahr_stand_zu_wegwerf_pos() {
-    while(position_motor2 < stand_pos_wegwerf) {
-        position_motor2++;
+    while(position_motor_stand < stand_pos_wegwerf) {
+        position_motor_stand++;
         ThisThread::sleep_for(MOTOR_SPEED);
-        motor2 = motorlauf[position_motor2%8]<<motor2_verschiebung;
+        motor_stand = motorlauf[position_motor_stand%8]<<motor_stand_verschiebung;
     }
 }
 
 void fahr_stand_home() {
-    while(position_motor2 < stand_pos_home) {
-        position_motor2--;
+    while(position_motor_stand < stand_pos_home) {
+        position_motor_stand--;
         ThisThread::sleep_for(MOTOR_SPEED);
-        motor2 = motorlauf[position_motor2%8]<<motor2_verschiebung;
+        motor_stand = motorlauf[position_motor_stand%8]<<motor_stand_verschiebung;
     }
+}
+
+void mache_tee() {
+    fahr_stand_home();
+    fahr_teebeutel_unten();
+    for(int i = 0; i < 5; i++) {
+        shake_teebeutel();
+    }
+    fahr_teebeutel_home();
+    fahr_stand_zu_wegwerf_pos();
 }
