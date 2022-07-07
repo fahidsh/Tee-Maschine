@@ -11,3 +11,4 @@ compile_commands.json
 mbed-mqtt
 mbed_app.json
 main.cpp.*
+LCD_i2c_GSOE

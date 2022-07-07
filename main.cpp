@@ -253,6 +253,10 @@ DigitalOut leds[] = {PA_5, PA_6, PA_7, PB_6};
 const int LED_AN = 0;
 const int LED_AUS = 1;
 
+#include "LCD.h"
+lcd tm_lcd;
+bool lcd_aktiv = true;
+
 // Motoren
 PortOut motor1(PortC,0b1111); // C 0-3
 int motor1_verschiebung = 0;
@@ -264,10 +268,26 @@ unsigned int position_motor1 = 0;
 unsigned int position_motor2 = 0;
 Ticker motor_steurung_ticker;
 //Ticker motor2_ticker;
+#define MOTOR_SPEED 1ms
+
+// control vars
+int stand_pos_home = 0;
+int stand_pos_wegwerf = 5100;
+int teebeutel_home = 0;
+int teebeutel_unten = 4000;
+int teebeutel_jiggle = 1500;
 
 // Methoden
+void show_on_lcd(const char* msg);
 void einschalte_led(int which_led);
 void do_set_zustand(Zustand zustand);
+
+void fahr_teebeautel_unten();
+void fahr_teebeautel_home();
+void jiggle_teebeautel();
+void fahr_stand_zu_wegwerf_pos();
+void fahr_stand_home();
+
 void do_stop();
 void do_fahr_vor();
 void do_fahr_zuruek();
@@ -277,15 +297,31 @@ void do_motor_steurung();
 
 
 int main() {
+  show_on_lcd("Tee Maschine v2");
   int init_result = init(); // Wichtig, nicht ändern
-  if(init_result == 0) { mqtt_thread.start(check_mqtt_message); } // Wichtig, nicht ändern
-  
-  LOG(MessageType::INFO, "Main Started...");
+  if(init_result == 0) { 
 
-  motor_steurung_ticker.attach(&do_motor_steurung, 100ms);
+    tm_lcd.clear();
+
+    mqtt_thread.start(check_mqtt_message); // MQTT Verbindung in eigner Thread
+    LOG(MessageType::INFO, "Init Erfolgreich");
+    show_on_lcd("Init Erfolgreich");
+    motor_steurung_ticker.attach(&do_motor_steurung, MOTOR_SPEED);
+  
+  } else { // init war nicht erfolgreicht
+
+      LOG(MessageType::ERROR, "Init fehlgeschlagen");
+      LOG(MessageType::ERROR, "Mikrocontroller wird in 5 Sekunden neugestartet...");
+      show_on_lcd("Init fehlschlag!Neustart in 5S");
+      ThisThread::sleep_for(5s); // warte 5 sekunden
+      restart_controller(); // MC neustarten
+  
+  } // if(init_result == 0)
 
   while(true) {
 
+      LOG(MessageType::DEBUG, "%d, %d", position_motor1, position_motor2);
+      ThisThread::sleep_for(100ms);
 
   }
 
@@ -309,42 +345,45 @@ bool ist_befehl(string befehl) {
       return true;
   } else if(befehl == "0"){
 
-      LOG(MessageType::INFO, "Setze Zusand: STOP");
-      aktueller_befehl = befehl;
-      do_set_zustand(STOP);
+      LOG(MessageType::INFO, "Teebeutel geht unten");
+      show_on_lcd("Teebeutel unten");
+      fahr_teebeautel_unten();
       return true;
 
   } else if(befehl == "1"){
       
-      LOG(MessageType::INFO, "Setze Zusand: FAHR VORWARTS");
-      aktueller_befehl = befehl;
-      do_set_zustand(FaHR_VOR);
+      LOG(MessageType::INFO, "Teebeutel geht home");
+      show_on_lcd("Teebeutel home");
+      fahr_teebeautel_home();
       return true;
 
   } else if(befehl == "2"){
       
-      LOG(MessageType::INFO, "Setze Zusand: FAHR RÜCKWARTS");
-      aktueller_befehl = befehl;
-      do_set_zustand(FAHR_ZURUEK);
+      LOG(MessageType::INFO, "Stand geht zur Wegwerf Position");
+      show_on_lcd("Stand > Wegwerf");
+      fahr_stand_zu_wegwerf_pos();
       return true;
 
   } else if(befehl == "3"){
       
-      LOG(MessageType::INFO, "Setze Zusand: DREHE RECHT");
-      aktueller_befehl = befehl;
-      do_set_zustand(DREHE_RECHTS);
+      LOG(MessageType::INFO, "Stand geht Home");
+      show_on_lcd("Stand > Home");
+      fahr_stand_home();
       return true;
 
   } else if(befehl == "4"){
       
-      LOG(MessageType::INFO, "Setze Zusand: DREHE LINK");
-      aktueller_befehl = befehl;
-      do_set_zustand(DREHE_LINKS);
+      LOG(MessageType::INFO, "shake it baby...");
+      show_on_lcd("Jiggle ..");
+      jiggle_teebeautel();
       return true;
 
   } else if(befehl == "5"){
       
-      LOG(MessageType::INFO, "Befehl: %s ist noch unbesetzt", befehl.c_str());
+      LOG(MessageType::INFO, "Alles home");
+      show_on_lcd("All Home");
+      fahr_stand_home();
+      fahr_teebeautel_home();
       return true;
 
   } else if(befehl == "6"){
@@ -355,6 +394,27 @@ bool ist_befehl(string befehl) {
   }
 
   return false;
+}
+
+void show_on_lcd(const char* msg) {
+
+    if(!lcd_aktiv){ return; }
+
+    tm_lcd.clear();
+    if(strlen(msg) <= 16) {
+        tm_lcd.cursorpos(0);
+        tm_lcd.printf("%s", msg);
+    } else {
+        char print_msg[16];
+        // die erste 16 zeichen an lcd zeile 1 ausgeben
+        tm_lcd.cursorpos(0);
+        memcpy(print_msg, &msg[0], 16);
+        tm_lcd.printf("%s", msg);
+        // die nächste 16 zeichen an lcd zeile 1 ausgeben
+        tm_lcd.cursorpos(64);
+        memcpy(print_msg, &msg[16], 16);
+        tm_lcd.printf("%s", msg);
+    }
 }
 
 void einschalte_led(int which_led) {
@@ -395,5 +455,51 @@ void do_motor_steurung() {
         case FAHR_ZURUEK: do_fahr_zuruek(); break;
         case DREHE_RECHTS: do_drehe_rechts(); break;
         case DREHE_LINKS: do_drehe_links(); break;
+    }
+}
+
+void fahr_teebeautel_unten() {
+    while(position_motor1 < teebeutel_unten) {
+        position_motor1++;
+        ThisThread::sleep_for(MOTOR_SPEED);
+        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+    }
+}
+
+void fahr_teebeautel_home() {
+    while(position_motor1 > teebeutel_home) {
+        position_motor1--;
+        ThisThread::sleep_for(MOTOR_SPEED);
+        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+    }
+}
+
+void jiggle_teebeautel() {
+    while(position_motor1 > teebeutel_jiggle) {
+        position_motor1--;
+        ThisThread::sleep_for(MOTOR_SPEED);
+        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+    }
+
+    while(position_motor1 < teebeutel_unten) {
+        position_motor1++;
+        ThisThread::sleep_for(MOTOR_SPEED);
+        motor1 = motorlauf[position_motor1%8]<<motor1_verschiebung;
+    }
+}
+
+void fahr_stand_zu_wegwerf_pos() {
+    while(position_motor2 < stand_pos_wegwerf) {
+        position_motor2++;
+        ThisThread::sleep_for(MOTOR_SPEED);
+        motor2 = motorlauf[position_motor2%8]<<motor2_verschiebung;
+    }
+}
+
+void fahr_stand_home() {
+    while(position_motor2 < stand_pos_home) {
+        position_motor2--;
+        ThisThread::sleep_for(MOTOR_SPEED);
+        motor2 = motorlauf[position_motor2%8]<<motor2_verschiebung;
     }
 }
