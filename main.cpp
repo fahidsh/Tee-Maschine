@@ -316,10 +316,11 @@ std::string aktueller_befehl = "0";
 int stand_pos_home = 0;
 int stand_pos_wegwerf = -5100; // differenz 5100
 int teebeutel_hoch = 0;
-int teebeutel_unten = -4000; // differenz 4000
+int teebeutel_unten = -3500; // differenz 4000
 int teebeutel_shake = 1500;
 int step_size = 1000;
 bool erste_befehl = true;
+bool zeige_motor_pos = false;
 
 // Methoden
 void show_on_lcd(const char *msg);
@@ -362,8 +363,11 @@ int main() {
 
   while (true) {
 
-    LOG(MessageType::DEBUG, "%d, %d", position_motor_teebeutel,
+    if(zeige_motor_pos){
+      LOG(MessageType::DEBUG, "%d, %d", 
+        position_motor_teebeutel,
         position_motor_stand);
+    }
 
     ThisThread::sleep_for(500ms);
 
@@ -382,96 +386,85 @@ int main() {
  * @return false wenn der parameter kein befehl war
  */
 bool ist_befehl(string befehl) {
+  // die letzte befehl von mqtt-server wird nachdem start geholt
+  // die erste befehl ignorieren
+  if(erste_befehl){ erste_befehl = false; return true; }
+
   // für jede gewünschte befehl, eine neue if/else if block hinzufügen
   // in der if/else if block, eure Function aufrufen und dann return true machen
-  if(erste_befehl){ erste_befehl = false; return true; }
-  if (befehl == aktueller_befehl) {
-    return true;
-  } else if (befehl == "STOP") {
-
-    aktueller_befehl = befehl;
+  if (befehl == "STOP") {
+    
     LOG(MessageType::INFO, "STOP");
     show_on_lcd("STOP");
     return true;
 
   } else if (befehl == "MACH_TEE") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "MACH_TEE");
     show_on_lcd("MACH_TEE");
     mache_tee();
     return true;
 
   } else if (befehl == "TB_UNTEN") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "TB_UNTEN");
     show_on_lcd("TB_UNTEN");
     fahr_teebeutel_unten();
     return true;
 
   } else if (befehl == "TB_HOCH") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "TB_HOCH");
     show_on_lcd("TB_HOCH");
     fahr_teebeutel_hoch();
     return true;
 
   } else if (befehl == "TB_SHAKE") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "TB_SHAKE");
     show_on_lcd("TB_SHAKE");
     shake_teebeutel();
     return true;
 
   } else if (befehl == "STAND_WEGWERF") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "STAND_WEGWERF");
     show_on_lcd("STAND_WEGWERF");
     fahr_stand_zu_wegwerf_pos();
     return true;
 
   } else if (befehl == "STAND_HOME") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "STAND_HOME");
     show_on_lcd("STAND_HOME");
     fahr_stand_home();
     return true;
   } else if (befehl == "FAHR_RECHTS") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "FAHR_RECHTS");
     show_on_lcd("FAHR_RECHTS");
     fahr_rechts();
     return true;
   } else if (befehl == "FAHR_LINKS") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "FAHR_LINKS");
     show_on_lcd("FAHR_LINKS");
     fahr_links();
     return true;
   } else if (befehl == "FAHR_OBEN") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "FAHR_OBEN");
     show_on_lcd("FAHR_OBEN");
     fahr_oben();
     return true;
   } else if (befehl == "FAHR_UNTEN") {
-
-    aktueller_befehl = befehl;
+    
     LOG(MessageType::INFO, "FAHR_UNTEN");
     show_on_lcd("FAHR_UNTEN");
     fahr_unten();
     return true;
   } else if (befehl == "KALIBRIEREN") {
 
-    aktueller_befehl = befehl;
     LOG(MessageType::INFO, "KALIBRIEREN");
     show_on_lcd("KALIBRIEREN");
     kalibrieren();
@@ -621,4 +614,5 @@ void kalibrieren() {
   position_motor_stand = 0;
   position_motor_teebeutel = 0;
   show_on_lcd("Fertig");
+  
 }
