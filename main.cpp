@@ -307,8 +307,6 @@ int motorlauf[] = {0b0001, 0b0011, 0b0010, 0b0110,
 */
 unsigned int position_motor_teebeutel = 0;
 unsigned int position_motor_stand = 0;
-Ticker motor_steurung_ticker;
-// Ticker motor2_ticker;
 #define MOTOR_SPEED 1ms
 
 // control vars
@@ -324,7 +322,6 @@ bool zeige_motor_pos = false;
 
 // Methoden
 void show_on_lcd(const char *msg);
-void tee_maschin_controller();
 void fahr_teebeutel_unten();
 void fahr_teebeutel_hoch();
 void shake_teebeutel();
@@ -348,7 +345,6 @@ int main() {
     tm_lcd.clear();
     tm_lcd.cursorpos(0);
     show_on_lcd("Init Erfolgreich");
-    motor_steurung_ticker.attach(&tee_maschin_controller, MOTOR_SPEED);
 
   } else { // init war nicht erfolgreicht
 
@@ -494,10 +490,6 @@ void show_on_lcd(const char *msg) {
     memcpy(print_msg, &msg[16], 16);
     tm_lcd.printf("%s", msg);
   }
-}
-
-void tee_maschin_controller() {
-  // noch nichts
 }
 
 void fahr_teebeutel_unten() { // unten_pos: -4000
